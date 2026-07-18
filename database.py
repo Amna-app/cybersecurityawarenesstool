@@ -1,171 +1,266 @@
 from __future__ import annotations
+
+import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
-DB_PATH = Path(__file__).resolve().parent / "database.db"
+APP_DIR = Path(__file__).resolve().parent
+DB_PATH = Path(os.getenv("RESEARCH_DB_PATH", str(APP_DIR / "research_data.db")))
 
 
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+@contextmanager
+def get_connection() -> Iterator[sqlite3.Connection]:
+    """Open a short-lived SQLite connection suitable for Streamlit reruns."""
+    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    conn.execute("PRAGMA busy_timeout = 30000")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
         conn.executescript(
             """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                full_name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                organisation TEXT NOT NULL,
-                job_title TEXT NOT NULL,
-                country TEXT NOT NULL,
-                employee_id TEXT DEFAULT '',
-                password_hash TEXT NOT NULL,
-                password_salt TEXT NOT NULL,
-                created_at TEXT NOT NULL
+            CREATE TABLE IF NOT EXISTS participants (
+                participant_id TEXT PRIMARY KEY,
+                age_group TEXT NOT NULL,
+                gender TEXT NOT NULL,
+                education_level TEXT NOT NULL,
+                employment_status TEXT NOT NULL,
+                previous_training TEXT NOT NULL,
+                computer_use TEXT NOT NULL,
+                consent_given INTEGER NOT NULL CHECK(consent_given IN (0,1)),
+                consent_version TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS quiz_attempts (
+            CREATE TABLE IF NOT EXISTS questionnaire_responses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
+                participant_id TEXT NOT NULL,
+                stage TEXT NOT NULL CHECK(stage IN ('pre','post')),
+                question_key TEXT NOT NULL,
+                question_text TEXT NOT NULL,
+                response TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                UNIQUE(participant_id, stage, question_key),
+                FOREIGN KEY(participant_id) REFERENCES participants(participant_id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS quiz_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                participant_id TEXT NOT NULL,
                 score INTEGER NOT NULL,
                 total INTEGER NOT NULL,
                 percentage REAL NOT NULL,
-                passed INTEGER NOT NULL,
-                attempted_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                answers_json TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                FOREIGN KEY(participant_id) REFERENCES participants(participant_id)
+                    ON DELETE CASCADE
             );
 
-            CREATE TABLE IF NOT EXISTS certificates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL UNIQUE,
-                certificate_id TEXT NOT NULL UNIQUE,
-                score INTEGER NOT NULL,
-                total INTEGER NOT NULL,
-                percentage REAL NOT NULL,
-                issued_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            CREATE TABLE IF NOT EXISTS module_progress (
+                participant_id TEXT NOT NULL,
+                module_key TEXT NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 1 CHECK(completed IN (0,1)),
+                completed_at TEXT NOT NULL,
+                PRIMARY KEY(participant_id, module_key),
+                FOREIGN KEY(participant_id) REFERENCES participants(participant_id)
+                    ON DELETE CASCADE
             );
+
+            CREATE INDEX IF NOT EXISTS idx_questionnaire_stage
+                ON questionnaire_responses(stage);
+            CREATE INDEX IF NOT EXISTS idx_quiz_participant
+                ON quiz_results(participant_id);
             """
         )
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def create_user(**data: Any) -> dict:
+def create_participant(data: dict[str, Any]) -> None:
     init_db()
-    try:
-        with get_connection() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO users (
-                    full_name, email, organisation, job_title, country,
-                    employee_id, password_hash, password_salt, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    data["full_name"],
-                    data["email"],
-                    data["organisation"],
-                    data["job_title"],
-                    data["country"],
-                    data.get("employee_id", ""),
-                    data["password_hash"],
-                    data["password_salt"],
-                    _now(),
-                ),
-            )
-            return {"success": True, "user_id": cursor.lastrowid}
-    except sqlite3.IntegrityError:
-        return {"success": False, "message": "An account with this email already exists."}
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO participants (
+                participant_id, age_group, gender, education_level,
+                employment_status, previous_training, computer_use,
+                consent_given, consent_version, started_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["participant_id"], data["age_group"], data["gender"],
+                data["education_level"], data["employment_status"],
+                data["previous_training"], data["computer_use"],
+                1, data.get("consent_version", "1.0"), utc_now(),
+            ),
+        )
 
 
-def authenticate_user(email: str) -> dict | None:
+def participant_exists(participant_id: str) -> bool:
     init_db()
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT * FROM users WHERE email = ?", (email,)
+            "SELECT 1 FROM participants WHERE participant_id = ?",
+            (participant_id,),
         ).fetchone()
-    return dict(row) if row else None
+    return row is not None
 
 
-def get_user_by_id(user_id: int) -> dict | None:
-    init_db()
+def save_questionnaire(
+    participant_id: str,
+    stage: str,
+    responses: dict[str, tuple[str, Any]],
+) -> None:
+    """Save or update one complete questionnaire atomically."""
+    if stage not in {"pre", "post"}:
+        raise ValueError("stage must be 'pre' or 'post'")
+    now = utc_now()
+    with get_connection() as conn:
+        for key, (question_text, response) in responses.items():
+            conn.execute(
+                """
+                INSERT INTO questionnaire_responses (
+                    participant_id, stage, question_key, question_text,
+                    response, submitted_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(participant_id, stage, question_key)
+                DO UPDATE SET
+                    question_text = excluded.question_text,
+                    response = excluded.response,
+                    submitted_at = excluded.submitted_at
+                """,
+                (participant_id, stage, key, question_text, str(response), now),
+            )
+
+
+def questionnaire_completed(participant_id: str, stage: str) -> bool:
     with get_connection() as conn:
         row = conn.execute(
             """
-            SELECT id, full_name, email, organisation, job_title, country,
-                   employee_id, created_at
-            FROM users WHERE id = ?
+            SELECT COUNT(*) AS count
+            FROM questionnaire_responses
+            WHERE participant_id = ? AND stage = ?
             """,
-            (user_id,),
+            (participant_id, stage),
         ).fetchone()
-    return dict(row) if row else None
+    return bool(row and row["count"] > 0)
 
 
-def save_quiz_attempt(user_id: int, score: int, total: int, passed: bool) -> int:
-    percentage = round((score / total) * 100, 2)
+def mark_module_complete(participant_id: str, module_key: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO module_progress (
+                participant_id, module_key, completed, completed_at
+            ) VALUES (?, ?, 1, ?)
+            ON CONFLICT(participant_id, module_key)
+            DO UPDATE SET completed = 1, completed_at = excluded.completed_at
+            """,
+            (participant_id, module_key, utc_now()),
+        )
+
+
+def completed_modules(participant_id: str) -> set[str]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT module_key FROM module_progress
+            WHERE participant_id = ? AND completed = 1
+            """,
+            (participant_id,),
+        ).fetchall()
+    return {row["module_key"] for row in rows}
+
+
+def save_quiz_result(
+    participant_id: str,
+    score: int,
+    total: int,
+    answers_json: str,
+) -> int:
+    percentage = round((score / total) * 100, 2) if total else 0.0
     with get_connection() as conn:
         cursor = conn.execute(
             """
-            INSERT INTO quiz_attempts (
-                user_id, score, total, percentage, passed, attempted_at
+            INSERT INTO quiz_results (
+                participant_id, score, total, percentage,
+                answers_json, submitted_at
             ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (user_id, score, total, percentage, int(passed), _now()),
+            (participant_id, score, total, percentage, answers_json, utc_now()),
         )
         return int(cursor.lastrowid)
 
 
-def get_best_attempt(user_id: int) -> dict | None:
+def latest_quiz_result(participant_id: str) -> dict[str, Any] | None:
     with get_connection() as conn:
         row = conn.execute(
             """
-            SELECT * FROM quiz_attempts
-            WHERE user_id = ?
-            ORDER BY percentage DESC, attempted_at DESC
+            SELECT * FROM quiz_results
+            WHERE participant_id = ?
+            ORDER BY submitted_at DESC, id DESC
             LIMIT 1
             """,
-            (user_id,),
+            (participant_id,),
         ).fetchone()
     return dict(row) if row else None
 
 
-def get_certificate(user_id: int) -> dict | None:
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT * FROM certificates WHERE user_id = ?", (user_id,)
-        ).fetchone()
-    return dict(row) if row else None
-
-
-def create_certificate(
-    user_id: int,
-    certificate_id: str,
-    score: int,
-    total: int,
-    percentage: float,
-) -> dict:
-    existing = get_certificate(user_id)
-    if existing:
-        return existing
-
+def mark_study_complete(participant_id: str) -> None:
     with get_connection() as conn:
         conn.execute(
-            """
-            INSERT INTO certificates (
-                user_id, certificate_id, score, total, percentage, issued_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, certificate_id, score, total, percentage, _now()),
+            "UPDATE participants SET completed_at = ? WHERE participant_id = ?",
+            (utc_now(), participant_id),
         )
-    return get_certificate(user_id)
+
+
+def fetch_table(table_name: str) -> list[dict[str, Any]]:
+    allowed = {
+        "participants", "questionnaire_responses", "quiz_results", "module_progress"
+    }
+    if table_name not in allowed:
+        raise ValueError("Invalid table name")
+    with get_connection() as conn:
+        rows = conn.execute(f"SELECT * FROM {table_name}").fetchall()
+    return [dict(row) for row in rows]
+
+
+def summary_counts() -> dict[str, int]:
+    with get_connection() as conn:
+        participants = conn.execute("SELECT COUNT(*) FROM participants").fetchone()[0]
+        completed = conn.execute(
+            "SELECT COUNT(*) FROM participants WHERE completed_at IS NOT NULL"
+        ).fetchone()[0]
+        pre = conn.execute(
+            "SELECT COUNT(DISTINCT participant_id) FROM questionnaire_responses WHERE stage='pre'"
+        ).fetchone()[0]
+        post = conn.execute(
+            "SELECT COUNT(DISTINCT participant_id) FROM questionnaire_responses WHERE stage='post'"
+        ).fetchone()[0]
+        quizzes = conn.execute("SELECT COUNT(*) FROM quiz_results").fetchone()[0]
+    return {
+        "participants": participants,
+        "completed": completed,
+        "pre_responses": pre,
+        "post_responses": post,
+        "quiz_attempts": quizzes,
+    }
