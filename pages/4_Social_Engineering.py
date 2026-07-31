@@ -1,12 +1,12 @@
 import streamlit as st
 
 from database import mark_module_complete
-from research_utils import require_pre_questionnaire, research_sidebar
+from research_utils import require_initial_questionnaire, research_sidebar
 
-participant_id = require_pre_questionnaire()
+participant_id = require_initial_questionnaire()
 research_sidebar()
 
-st.title("4. Social Engineering Scenario Training")
+st.title("4. Social Engineering Questionnaire Activity")
 
 scenarios = [
     (
@@ -47,9 +47,9 @@ for index, (title, prompt, options, correct, explanation) in enumerate(scenarios
             else:
                 st.error("Incorrect. " + explanation)
 
-if st.button("Mark social engineering module as completed", use_container_width=True):
+if st.button("Mark social engineering section as completed", use_container_width=True):
     if any(answer is None for answer, _, _ in answers):
         st.error("Answer all scenarios before completing the module.")
     else:
         mark_module_complete(participant_id, "social_engineering")
-        st.success("Social Engineering module completed. Continue to the Knowledge Assessment.")
+        st.success("Social Engineering section completed. Continue to the Knowledge Assessment.")

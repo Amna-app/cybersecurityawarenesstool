@@ -2,12 +2,12 @@ import re
 import streamlit as st
 
 from database import mark_module_complete
-from research_utils import require_pre_questionnaire, research_sidebar
+from research_utils import require_initial_questionnaire, research_sidebar
 
-participant_id = require_pre_questionnaire()
+participant_id = require_initial_questionnaire()
 research_sidebar()
 
-st.title("3. Password Security Training")
+st.title("3. Password Security Questionnaire Activity")
 st.write("Use a fictional sample only. The entered text is not saved to the research database.")
 
 password = st.text_input("Enter a sample password", type="password")
@@ -57,6 +57,6 @@ if submitted:
         st.error("Answer both questions.")
     elif q1 == "Use a unique password for each account" and q2 == "Multi-factor authentication":
         mark_module_complete(participant_id, "password")
-        st.success("Password Security module completed.")
+        st.success("Password Security section completed.")
     else:
         st.error("Review the recommended practices and try again.")

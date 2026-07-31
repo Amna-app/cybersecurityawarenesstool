@@ -2,21 +2,21 @@ import json
 import streamlit as st
 
 from database import save_quiz_result
-from research_utils import REQUIRED_MODULES, require_pre_questionnaire, research_sidebar, study_progress
+from research_utils import REQUIRED_MODULES, require_initial_questionnaire, research_sidebar, study_progress
 
-participant_id = require_pre_questionnaire()
+participant_id = require_initial_questionnaire()
 research_sidebar()
 progress = study_progress(participant_id)
 
-st.title("5. Post-Training Knowledge Assessment")
+st.title("5. Final Knowledge Assessment")
 if not REQUIRED_MODULES.issubset(progress["modules"]):
     missing = sorted(REQUIRED_MODULES - progress["modules"])
-    st.warning("Complete all three training modules first. Missing: " + ", ".join(missing))
+    st.warning("Complete all three interactive questionnaire sections first. Missing: " + ", ".join(missing))
     st.stop()
 
 st.write(
-    "This assessment measures cybersecurity knowledge after the training intervention. "
-    "It is for research evaluation; no certificate or pass/fail award is issued."
+    "This assessment measures cybersecurity knowledge as part of this research questionnaire. "
+    "It is for research evaluation; no professional qualification or pass/fail decision is issued."
 )
 
 questions = [
@@ -57,5 +57,5 @@ if submitted:
         st.metric("Knowledge assessment score", f"{score}/{total} ({percentage:.0f}%)")
         st.success(
             "Your assessment response has been recorded for research analysis. "
-            "Please complete the Post-Training Questionnaire and Feedback page."
+            "Please complete the Final Questionnaire and Feedback page."
         )

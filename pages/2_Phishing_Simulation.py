@@ -1,9 +1,9 @@
 import streamlit as st
 
 from database import mark_module_complete
-from research_utils import require_pre_questionnaire, research_sidebar
+from research_utils import require_initial_questionnaire, research_sidebar
 
-participant_id = require_pre_questionnaire()
+participant_id = require_initial_questionnaire()
 research_sidebar()
 
 st.title("2. Interactive Phishing Simulation")
@@ -58,11 +58,11 @@ for index, scenario in enumerate(scenarios, 1):
             else:
                 st.error("Not quite. " + scenario["explanation"])
 
-if st.button("Mark phishing module as completed", use_container_width=True):
+if st.button("Mark phishing section as completed", use_container_width=True):
     if not answered:
         st.error("Answer all scenarios before completing the module.")
     else:
         mark_module_complete(participant_id, "phishing")
-        st.success("Phishing module completed. You may continue to Password Security.")
+        st.success("Phishing section completed. You may continue to Password Security.")
         if not all_correct:
             st.info("Some answers were incorrect. Review the feedback above before continuing.")

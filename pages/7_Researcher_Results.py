@@ -39,9 +39,9 @@ for col, (label, value) in zip(
     [
         ("Participants", counts["participants"]),
         ("Completed", counts["completed"]),
-        ("Pre questionnaires", counts["pre_responses"]),
+        ("Initial questionnaires", counts["initial_responses"]),
         ("Quiz attempts", counts["quiz_attempts"]),
-        ("Post feedback", counts["post_responses"]),
+        ("Final questionnaires", counts["final_responses"]),
     ],
 ):
     col.metric(label, value)
@@ -58,9 +58,9 @@ def to_csv_bytes(rows):
 
 for table, title, filename in [
     ("participants", "Anonymous participant data", "participants.csv"),
-    ("questionnaire_responses", "Pre/post questionnaire responses and feedback", "questionnaire_responses.csv"),
+    ("questionnaire_responses", "Initial and final questionnaire responses and feedback", "questionnaire_responses.csv"),
     ("quiz_results", "Knowledge assessment results", "quiz_results.csv"),
-    ("module_progress", "Module completion data", "module_progress.csv"),
+    ("module_progress", "Section completion data", "module_progress.csv"),
 ]:
     rows = fetch_table(table)
     with st.expander(title, expanded=(table == "questionnaire_responses")):
