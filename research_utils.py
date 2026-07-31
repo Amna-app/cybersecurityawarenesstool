@@ -42,10 +42,10 @@ def require_consent() -> str:
     return str(participant_id)
 
 
-def require_pre_questionnaire() -> str:
+def require_initial_questionnaire() -> str:
     participant_id = require_consent()
-    if not questionnaire_completed(participant_id, "pre"):
-        st.warning("Please complete the pre-training questionnaire before accessing this section.")
+    if not questionnaire_completed(participant_id, "initial"):
+        st.warning("Please complete the initial questionnaire before accessing this section.")
         st.stop()
     return participant_id
 
@@ -53,11 +53,11 @@ def require_pre_questionnaire() -> str:
 def study_progress(participant_id: str) -> dict[str, object]:
     modules = completed_modules(participant_id)
     return {
-        "pre": questionnaire_completed(participant_id, "pre"),
+        "initial": questionnaire_completed(participant_id, "initial"),
         "modules": modules,
         "modules_complete": REQUIRED_MODULES.issubset(modules),
         "quiz": latest_quiz_result(participant_id) is not None,
-        "post": questionnaire_completed(participant_id, "post"),
+        "final": questionnaire_completed(participant_id, "final"),
     }
 
 
@@ -69,10 +69,10 @@ def research_sidebar() -> None:
         progress = study_progress(st.session_state.participant_id)
         completed = sum(
             [
-                bool(progress["pre"]),
+                bool(progress["initial"]),
                 bool(progress["modules_complete"]),
                 bool(progress["quiz"]),
-                bool(progress["post"]),
+                bool(progress["final"]),
             ]
         )
         st.sidebar.progress(completed / 4)

@@ -44,7 +44,7 @@ def init_db() -> None:
                 gender TEXT NOT NULL,
                 education_level TEXT NOT NULL,
                 employment_status TEXT NOT NULL,
-                previous_training TEXT NOT NULL,
+                previous_research TEXT NOT NULL,
                 computer_use TEXT NOT NULL,
                 consent_given INTEGER NOT NULL CHECK(consent_given IN (0,1)),
                 consent_version TEXT NOT NULL,
@@ -55,7 +55,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS questionnaire_responses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 participant_id TEXT NOT NULL,
-                stage TEXT NOT NULL CHECK(stage IN ('pre','post')),
+                stage TEXT NOT NULL CHECK(stage IN ('initial','final')),
                 question_key TEXT NOT NULL,
                 question_text TEXT NOT NULL,
                 response TEXT NOT NULL,
@@ -102,14 +102,14 @@ def create_participant(data: dict[str, Any]) -> None:
             """
             INSERT INTO participants (
                 participant_id, age_group, gender, education_level,
-                employment_status, previous_training, computer_use,
+                employment_status, previous_research, computer_use,
                 consent_given, consent_version, started_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["participant_id"], data["age_group"], data["gender"],
                 data["education_level"], data["employment_status"],
-                data["previous_training"], data["computer_use"],
+                data["previous_research"], data["computer_use"],
                 1, data.get("consent_version", "1.0"), utc_now(),
             ),
         )
@@ -131,8 +131,8 @@ def save_questionnaire(
     responses: dict[str, tuple[str, Any]],
 ) -> None:
     """Save or update one complete questionnaire atomically."""
-    if stage not in {"pre", "post"}:
-        raise ValueError("stage must be 'pre' or 'post'")
+    if stage not in {"initial", "final"}:
+        raise ValueError("stage must be 'initial' or 'final'")
     now = utc_now()
     with get_connection() as conn:
         for key, (question_text, response) in responses.items():
@@ -251,16 +251,16 @@ def summary_counts() -> dict[str, int]:
             "SELECT COUNT(*) FROM participants WHERE completed_at IS NOT NULL"
         ).fetchone()[0]
         pre = conn.execute(
-            "SELECT COUNT(DISTINCT participant_id) FROM questionnaire_responses WHERE stage='pre'"
+            "SELECT COUNT(DISTINCT participant_id) FROM questionnaire_responses WHERE stage='initial'"
         ).fetchone()[0]
         post = conn.execute(
-            "SELECT COUNT(DISTINCT participant_id) FROM questionnaire_responses WHERE stage='post'"
+            "SELECT COUNT(DISTINCT participant_id) FROM questionnaire_responses WHERE stage='final'"
         ).fetchone()[0]
         quizzes = conn.execute("SELECT COUNT(*) FROM quiz_results").fetchone()[0]
     return {
         "participants": participants,
         "completed": completed,
-        "pre_responses": pre,
-        "post_responses": post,
+        "initial_responses": pre,
+        "final_responses": post,
         "quiz_attempts": quizzes,
     }

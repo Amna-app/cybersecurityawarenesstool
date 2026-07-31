@@ -12,7 +12,7 @@ from research_utils import (
 
 
 st.set_page_config(
-    page_title="Cybersecurity Awareness Research Study",
+    page_title="Cybersecurity Awareness Questionnaire",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -46,8 +46,8 @@ st.markdown(
 st.markdown(
     """
     <div class="hero">
-      <h1>🛡️ Cybersecurity Awareness Research Study</h1>
-      <p>An academic research project evaluating whether interactive training improves awareness of phishing, password security and social engineering.</p>
+      <h1>🛡️ Cybersecurity Awareness Questionnaire</h1>
+      <p>An academic research questionnaire about phishing, password security and social engineering awareness.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -60,10 +60,10 @@ if st.session_state.consent_given:
     )
     cols = st.columns(4)
     stages = [
-        ("1", "Pre-training questionnaire"),
-        ("2", "Training modules"),
+        ("1", "Initial questionnaire"),
+        ("2", "Interactive questionnaire sections"),
         ("3", "Knowledge assessment"),
-        ("4", "Post-training feedback"),
+        ("4", "Final questionnaire"),
     ]
     for col, (number, label) in zip(cols, stages):
         with col:
@@ -72,7 +72,7 @@ if st.session_state.consent_given:
                 unsafe_allow_html=True,
             )
     st.info(
-        "No login, name, email address or certificate is required. Your responses are linked only to the anonymous participant ID shown above."
+        "No login, name or email address is required. Your responses are linked only to the anonymous participant ID shown above."
     )
     st.stop()
 
@@ -90,9 +90,9 @@ with st.expander("Purpose of the research", expanded=True):
 
 with st.expander("What participation involves", expanded=True):
     st.write(
-        "Participation involves: (1) completing a short pre-training questionnaire; "
-        "(2) using three interactive learning modules; (3) completing a knowledge assessment; "
-        "and (4) completing a post-training questionnaire and feedback form. The full activity is expected to take approximately 15–20 minutes."
+        "Participation involves: (1) completing a short initial questionnaire; "
+        "(2) completing three interactive questionnaire sections; (3) completing a knowledge assessment; "
+        "and (4) completing a final questionnaire and feedback form. The full activity is expected to take approximately 15–20 minutes."
     )
 
 col1, col2 = st.columns(2)
@@ -111,18 +111,18 @@ with col2:
     with st.expander("Data collection and confidentiality", expanded=True):
         st.write(
             "The application does not request your name, email address, password or account registration. "
-            "It records an anonymous participant ID, broad demographic categories, questionnaire responses, module progress and assessment score. "
+            "It records an anonymous participant ID, broad demographic categories, questionnaire responses, section progress and assessment score. "
             "Results should be reported in aggregated or anonymised form."
         )
     with st.expander("Research use and contact details", expanded=True):
         st.write(
             "The collected information will be used only for the stated academic research project and related dissertation. "
-            "Replace the placeholders below with the approved researcher and supervisor contact details before recruitment begins."
+            "The researcher and supervisor details for this academic questionnaire are provided below."
         )
         st.code(
-            "Researcher: [Insert researcher name and university email]\n"
-            "Supervisor: [Insert supervisor name and university email]\n"
-            "Institution: University of Essex Online"
+            "Researcher: Amna Rashid\n"
+            "Supervisor: Dr. Maria Alvanou\n"
+            "Institution: University of Essex"
         )
 
 st.warning(
@@ -154,8 +154,8 @@ with st.form("consent_form"):
             "Student", "Unemployed", "Retired", "Other", "Prefer not to say"
         ],
     )
-    previous_training = st.radio(
-        "Have you previously completed cybersecurity awareness training? *",
+    previous_research = st.radio(
+        "Have you previously taken part in a cybersecurity questionnaire or research study? *",
         ["Yes", "No", "Not sure"],
         index=None,
     )
@@ -176,7 +176,7 @@ if submitted:
     if gender == "Select...": missing.append("gender")
     if education == "Select...": missing.append("education level")
     if employment == "Select...": missing.append("employment status")
-    if previous_training is None: missing.append("previous training")
+    if previous_research is None: missing.append("previous research participation")
     if not all([understood, voluntary, research_use, adult]):
         missing.append("all consent confirmations")
 
@@ -195,7 +195,7 @@ if submitted:
                     "gender": gender,
                     "education_level": education,
                     "employment_status": employment,
-                    "previous_training": previous_training,
+                    "previous_research": previous_research,
                     "computer_use": computer_use,
                     "consent_version": CONSENT_VERSION,
                 }
