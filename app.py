@@ -138,7 +138,7 @@ with st.form("consent_form"):
     )
     gender = st.selectbox(
         "Gender *",
-        ["Select...", "Female", "Male", "Non-binary", "Self-describe", "Prefer not to say"],
+        ["Select...", "Female", "Male"],
     )
     education = st.selectbox(
         "Highest level of education *",
